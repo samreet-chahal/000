@@ -6,43 +6,79 @@ import streamlit as st
 import joblib
 import numpy as np
 
-# Load scaler and model
-scaler = joblib.load("scaler.pkl")
-model = joblib.load("model.pkl")
+# ── Page config ──────────────────────────────────────────────────────────────
+st.set_page_config(
+    page_title="Telco Churn Predictor",
+    page_icon="📡",
+    layout="centered",
+)
 
-st.title("Churn Prediction App")
+# ── Load model & scaler ──────────────────────────────────────────────────────
+@st.cache_resource
+def load_model():
+    scaler = joblib.load("scaler.pkl")
+    model  = joblib.load("model.pkl")
+    return scaler, model
+
+scaler, model = load_model()
+
+# ── Header ────────────────────────────────────────────────────────────────────
+st.title(" Telco Customer Churn Predictor")
+st.caption("Enter a customer's details below to predict whether they are likely to churn.")
+st.divider()
+
+# ── Input form ───────────────────────────────────────────────────────────────
+col1, col2 = st.columns(2)
+
+with col1:
+    gender = st.selectbox("Gender", ["Male", "Female"])
+    tenure = st.number_input(
+        "Tenure (months)",
+        min_value=0, max_value=100, value=10,
+        help="How long the customer has been with the company"
+    )
+
+with col2:
+    monthly_charge = st.number_input(
+        "Monthly Charge ($)",
+        min_value=30, max_value=150, value=70,
+        help="The customer's current monthly bill"
+    )
 
 st.divider()
 
-st.write("Please enter the values and hit the predict button to get a prediction.")
-
-st.divider()
-
-# Inputs
-gender = st.selectbox("Enter Gender", ["Male", "Female"])
-tenure = st.number_input("Enter tenure (months)", min_value=0, max_value=100, value=10)
-monthlycharge = st.number_input("Enter monthly charge", min_value=30, max_value=150, value=70)
-
-st.divider()
-
-predictionbutton = st.button("Predict")
-
-if predictionbutton:
-    # Encode gender (Male = 1, Female = 0)
+# ── Predict ───────────────────────────────────────────────────────────────────
+if st.button(" Predict Churn", use_container_width=True, type="primary"):
     gender_male = 1 if gender == "Male" else 0
 
-    # Order MUST match training
-    X = [tenure, monthlycharge, gender_male]
+    X        = np.array([tenure, monthly_charge, gender_male]).reshape(1, -1)
+    X_scaled = scaler.transform(X)
 
-    X_array = np.array(X).reshape(1, -1)
+    prediction   = model.predict(X_scaled)[0]
+    probability  = model.predict_proba(X_scaled)[0]   # [P(No churn), P(Churn)]
+    churn_prob   = round(probability[1] * 100, 1)
+    no_churn_prob = round(probability[0] * 100, 1)
 
-    X_scaled = scaler.transform(X_array)
+    st.subheader("Prediction Result")
 
-    prediction = model.predict(X_scaled)[0]
+    if prediction == 1:
+        st.error(f"  This customer is **likely to churn** ({churn_prob}% probability)")
+    else:
+        st.success(f"  This customer is **not likely to churn** ({no_churn_prob}% probability of staying)")
 
-    predicted = "Yes" if prediction == 1 else "No"
+    # Probability bar
+    st.markdown("**Churn probability breakdown**")
+    col_a, col_b = st.columns(2)
+    col_a.metric(" Churn",     f"{churn_prob}%")
+    col_b.metric(" No Churn",  f"{no_churn_prob}%")
+    st.progress(int(churn_prob))
 
-    st.success(f"Predicted Churn: {predicted}")
-
+    # Input summary
+    with st.expander(" Input summary"):
+        st.write({
+            "Gender":         gender,
+            "Tenure (months)": tenure,
+            "Monthly Charge": f"${monthly_charge}",
+        })
 else:
-    st.info("Please enter the values and click Predict")
+    st.info(" Fill in the customer details above and click **Predict Churn**.")
